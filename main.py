@@ -75,6 +75,12 @@ def get_arguments():
         type=int,
         help='Training epoch number'
     )
+    parser.add_argument(
+        "--has_cuda",
+        default=False,
+        type=bool,
+        help='Has cuda or not'
+    )
     args = parser.parse_args()
 
     return args
@@ -120,6 +126,10 @@ def load_data(args):
 
 def main_work():
     args = get_arguments()
+    if args.has_cuda:
+        device = 'cpu'
+    else:
+        device = 'cuda:0'
     data = load_data(args)
     build_train_dataset = data[0]
     train_dataset = Dataset.from_dict(build_train_dataset)
@@ -130,7 +140,7 @@ def main_work():
         dev_dataloader = DataLoader(dev_dataset, batch_size=args.batch_size, shuffle=True)
         dev_batch_size = args.batch_size
     model = BiEncoder(args)
-    model.cuda()
+    model.to(device)
     optimizer = AdamW(model.parameters(), lr=args.lr)
     num_epochs = args.epoch
     num_training_steps = num_epochs * len(build_train_dataset['query']) // dev_batch_size
@@ -146,13 +156,13 @@ def main_work():
         whole_num = 0
         model.train()
         for index, sample in enumerate(train_dataloader):
-            positive = torch.tensor(list(range(len(sample['answer'])))).cuda()
+            positive = torch.tensor(list(range(len(sample['answer'])))).to(device)
             sample['answer'].extend(sample['negative'])
             ctx = ctx_tokenizer(sample['answer'], padding=True, truncation=True, max_length=512,
                                 return_tensors='pt')  # max 512
             qry = qry_tokenizer(sample['query'], padding=True, truncation=True, max_length=512, return_tensors='pt')
-            ctx = {k: v.cuda() for k, v in ctx.items()}
-            qry = {k: v.cuda() for k, v in qry.items()}
+            ctx = {k: v.to(device) for k, v in ctx.items()}
+            qry = {k: v.to(device) for k, v in qry.items()}
             batch = {'ctx': ctx, 'qry': qry, 'positive': positive}
             loss, accuracy = model(batch)
             loss.backward()
@@ -179,14 +189,14 @@ def main_work():
             whole_loss = 0
             for index, sample in enumerate(dev_dataloader):
                 with torch.no_grad():
-                    positive = torch.tensor(list(range(len(sample['answer'])))).cuda()
+                    positive = torch.tensor(list(range(len(sample['answer'])))).to(device)
                     sample['answer'].extend(sample['negative'])
                     ctx = ctx_tokenizer(sample['answer'], padding=True, truncation=True, max_length=512,
                                         return_tensors='pt')
                     qry = qry_tokenizer(sample['query'], padding=True, truncation=True, max_length=512,
                                         return_tensors='pt')
-                    ctx = {k: v.cuda() for k, v in ctx.items()}
-                    qry = {k: v.cuda() for k, v in qry.items()}
+                    ctx = {k: v.to(device) for k, v in ctx.items()}
+                    qry = {k: v.to(device) for k, v in qry.items()}
                     batch = {'ctx': ctx, 'qry': qry, 'positive': positive}
                     loss, accuracy = model(batch)
                     whole_loss += loss
