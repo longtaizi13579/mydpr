@@ -122,12 +122,13 @@ def main_work():
     args = get_arguments()
     data = load_data(args)
     build_train_dataset = data[0]
-    build_dev_dataset = data[1]
     train_dataset = Dataset.from_dict(build_train_dataset)
-    dev_dataset = Dataset.from_dict(build_dev_dataset)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    dev_dataloader = DataLoader(dev_dataset, batch_size=args.batch_size, shuffle=True)
-    dev_batch_size = args.batch_size
+    if args.valid:
+        build_dev_dataset = data[1]
+        dev_dataset = Dataset.from_dict(build_dev_dataset)
+        dev_dataloader = DataLoader(dev_dataset, batch_size=args.batch_size, shuffle=True)
+        dev_batch_size = args.batch_size
     model = BiEncoder(args)
     model.cuda()
     optimizer = AdamW(model.parameters(), lr=args.lr)
@@ -163,39 +164,40 @@ def main_work():
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-        model.eval()
-        correct_num = 0
-        whole_num = 0
-        whole_loss = 0
-        for index, sample in enumerate(dev_dataloader):
-            with torch.no_grad():
-                positive = torch.tensor(list(range(len(sample['answer'])))).cuda()
-                sample['answer'].extend(sample['negative'])
-                ctx = ctx_tokenizer(sample['answer'], padding=True, truncation=True, max_length=512,
-                                    return_tensors='pt')
-                qry = qry_tokenizer(sample['query'], padding=True, truncation=True, max_length=512,
-                                    return_tensors='pt')
-                ctx = {k: v.cuda() for k, v in ctx.items()}
-                qry = {k: v.cuda() for k, v in qry.items()}
-                batch = {'ctx': ctx, 'qry': qry, 'positive': positive}
-                loss, accuracy = model(batch)
-                whole_loss += loss
-                whole_num += dev_batch_size
-                correct_num += dev_batch_size * accuracy
-        whole_accuracy = float(correct_num) / whole_num
-        print('eval loss: ', whole_loss)
-        print('eval accuracy: ', whole_accuracy)
         pt_save_directory = save_base_directory + str(epoch) + f'_{str(round(whole_accuracy, 4))}'
         qry_tokenizer.save_pretrained(pt_save_directory + '/qry')
         ctx_tokenizer.save_pretrained(pt_save_directory + '/ctx')
         model.save_pretrained(pt_save_directory)
         data = load_data(args)
         build_train_dataset = data[0]
-        build_dev_dataset = data[1]
         train_dataset = Dataset.from_dict(build_train_dataset)
-        dev_dataset = Dataset.from_dict(build_dev_dataset)
         train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-        dev_dataloader = DataLoader(dev_dataset, batch_size=args.batch_size, shuffle=True)
+        if args.valid:
+            model.eval()
+            correct_num = 0
+            whole_num = 0
+            whole_loss = 0
+            for index, sample in enumerate(dev_dataloader):
+                with torch.no_grad():
+                    positive = torch.tensor(list(range(len(sample['answer'])))).cuda()
+                    sample['answer'].extend(sample['negative'])
+                    ctx = ctx_tokenizer(sample['answer'], padding=True, truncation=True, max_length=512,
+                                        return_tensors='pt')
+                    qry = qry_tokenizer(sample['query'], padding=True, truncation=True, max_length=512,
+                                        return_tensors='pt')
+                    ctx = {k: v.cuda() for k, v in ctx.items()}
+                    qry = {k: v.cuda() for k, v in qry.items()}
+                    batch = {'ctx': ctx, 'qry': qry, 'positive': positive}
+                    loss, accuracy = model(batch)
+                    whole_loss += loss
+                    whole_num += dev_batch_size
+                    correct_num += dev_batch_size * accuracy
+            whole_accuracy = float(correct_num) / whole_num
+            print('eval loss: ', whole_loss)
+            print('eval accuracy: ', whole_accuracy)
+            build_dev_dataset = data[1]
+            dev_dataset = Dataset.from_dict(build_dev_dataset)
+            dev_dataloader = DataLoader(dev_dataset, batch_size=args.batch_size, shuffle=True)
 
 
 if __name__ == "__main__":
