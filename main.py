@@ -17,13 +17,13 @@ def get_arguments():
     # Required parameters
     parser.add_argument(
         "--ctx_model_path",
-        default='roberta-base',
+        default='bert-base-uncased',
         type=str,
         help='Model path for context encoder model'
     )
     parser.add_argument(
         "--qry_model_path",
-        default='roberta-base',
+        default='bert-base-uncased',
         type=str,
         help='Model path for qry encoder model'
     )
